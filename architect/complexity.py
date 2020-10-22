@@ -1,14 +1,12 @@
+import concurrent.futures as cf
 import csv
 import io
-import json
 import logging
 
 import lizard
 from tqdm import tqdm
 
 from architect import duplcode
-import concurrent.futures as cf
-
 from architect.utils import find_files, exec_command
 
 
@@ -145,10 +143,4 @@ def run_lizard(folder, concurrency=4):
         }
 
 
-if __name__ == '__main__':
-    # output = main()
-    # pass
-    output = run_lizard('/Users/mizzlr/cn-sococo-blueprints')
-    # output = run_lizard('/Users/mizzlr/qretail')
-    json.dump(output, open('output.json', 'w'), indent=4)
 
