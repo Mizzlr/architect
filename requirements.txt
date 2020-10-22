@@ -2,3 +2,5 @@ mistune==2.0.0a4
 lizard
 requests
 tqdm
+stdlib_list
+pygments

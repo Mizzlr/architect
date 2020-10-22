@@ -1,8 +1,11 @@
 import json
+import logging
+import os
 import re
 from collections import defaultdict
 from fnmatch import fnmatch
 
+import stdlib_list
 from pygments.lexers import get_all_lexers
 
 from architect.utils import scan_imports, ctags, cloc_stats, get_input_folder, run_lizard
@@ -26,11 +29,70 @@ def file_match_exts(file, lang_exts):
     return any([fnmatch(file, ext) for ext in lang_exts])
 
 
+def number(iterable, delimiter='\n\t\t'):
+    return delimiter + delimiter.join([f'{n}> {item}' for n, item in enumerate(iterable)])
+
+
 def analyze_dependency(import_stmt_regex, import_stmt, source_file, possible_target_files, exports):
     """
     Compute the subset of possible_target_files that the source file actually depends on.
     Heuritics to compute the dependency is based on the the language, and semantics of the import statement
     """
+
+    import_stmt = import_stmt.strip()
+    input_context = f'import: "{import_stmt}"\n\t for file {os.path.basename(source_file)}, file{source_file}'
+
+    def not_supported():
+        return NotImplementedError(input_context)
+
+    def search_targets(target_file_pattern):
+        found = [target_file for target_file in possible_target_files if fnmatch(target_file, target_file_pattern)]
+        if found:
+            logging.info(f'Found [{len(found)}] dependencies for {input_context}: {number(found)}')
+        else:
+            logging.warning(f'No dependency found for {input_context}, with pattern\n\t\t{target_file_pattern}')
+        return found
+
+    match = import_stmt_regex.match(import_stmt)
+    if not match:
+        return []
+
+    match = [group.replace('"', '').replace(';', '').strip() for group in match.groups()]
+
+    if fnmatch(source_file, '*.ts'):  # Typescript: import {...} from ...
+        import_module = match[1]
+        if import_module.startswith('./'):
+            target_file_pattern = os.path.join(os.path.dirname(source_file), import_module[2:]) + '.*.ts'
+            return search_targets(target_file_pattern)
+        else:
+            raise not_supported()
+    elif fnmatch(source_file, '*.py'): # Python (from ...)? import ... (as ...)?
+
+        import_module = match[0]
+        if 'as' in import_module:
+            import_module = import_module.split('as', maxsplit=1)[0].strip()
+
+        if stdlib_list.in_stdlib(import_module):
+            logging.debug(f'Module {import_module} is part python stdlib or built-ins')
+            return []
+
+        source_file_parent = source_file
+        import_module_copy = import_module
+        while True:
+            source_file_parent = os.path.dirname(source_file_parent)
+            if import_module_copy.startswith('.'):  # resolve relative import
+                import_module_copy = import_module_copy[1:]
+            else:
+                break
+
+        if import_module.startswith('.'):
+            target_file_pattern = os.path.join(source_file_parent, import_module_copy + '.py')
+        else:
+            target_file_pattern = f"**/{import_module.replace('.', '/')}.py"
+        return search_targets(target_file_pattern)
+
+    else:
+        raise not_supported()
 
     return set()
 
