@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import logging
 
 import lizard
@@ -75,11 +76,40 @@ def main():
     return list(lizard.analyze_files([file], exts=lizard.get_extensions([]) + [duplcode.LizardExtension()]))
 
 
+def func_info_to_dict(func_info: lizard.FunctionInfo):
+    return {
+        'func_name': func_info.name,
+        'func_signature': func_info.long_name,
+        'start_line': func_info.start_line,
+        'end_line': func_info.end_line,
+        'lines': func_info.nloc,
+        'complexity': func_info.cyclomatic_complexity,
+        'max_nesting_depth': func_info.max_nesting_depth,
+    }
+
+
+def file_info_to_dict(file_info: lizard.FileInformation):
+    return {
+        'file': file_info.filename,
+        'lines': file_info.nloc,
+        'tokens': file_info.token_count,
+        'avg_lines': file_info.average_nloc,
+        'avg_tokens': file_info.average_token_count,
+        'avg_complexity': file_info.average_cyclomatic_complexity,
+        'sum_complexity': file_info.CCN,
+        'sum_max_nesting_depth': file_info.ND,
+        'word_count': file_info.wordCount,
+        'functions': [func_info_to_dict(func) for func in file_info.function_list],
+    }
+
+
 def run_lizard(folder, concurrency=4):
     duplcode_ext = duplcode.LizardExtension()
-    extensions = lizard.get_extensions([]) + [duplcode_ext]
-    files = find_files(folder, for_lizard=True)
+    from importlib import import_module as im
+    wordcount_ext = im('lizard_ext.lizardwordcount').LizardExtension()
 
+    extensions = lizard.get_extensions(['mccabe', 'nd']) + [duplcode_ext, wordcount_ext]
+    files = find_files(folder, for_lizard=True)
     file_analyzer = lizard.FileAnalyzer(extensions)
 
     with cf.ProcessPoolExecutor(max_workers=concurrency) as executor:
@@ -108,7 +138,7 @@ def run_lizard(folder, concurrency=4):
         logging.info("Total unique rate: %.2f%%" % (duplcode_ext.unique_rate() * 100))
 
         return {
-            'complexity_by_file': complexity_by_file,
+            'complexity_by_file': {k: file_info_to_dict(v) for k, v in complexity_by_file.items()},
             'duplicate_blocks': duplicate_blocks,
             'duplicate_rate': duplcode_ext.duplicate_rate(),
             'unique_rate': duplcode_ext.unique_rate()
@@ -120,5 +150,5 @@ if __name__ == '__main__':
     # pass
     output = run_lizard('/Users/mizzlr/cn-sococo-blueprints')
     # output = run_lizard('/Users/mizzlr/qretail')
-    print(output)
+    json.dump(output, open('output.json', 'w'), indent=4)
 
